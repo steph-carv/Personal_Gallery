@@ -38,7 +38,15 @@ export async function sendMagicLink(_: AuthFormState, formData: FormData): Promi
     email: parsed.data,
     options: { emailRedirectTo: `${await origin()}/auth/callback` },
   });
-  if (error) return { status: "error", message: friendlyAuthError(error.message) };
+  if (error) {
+    // Shows up in the server logs (Vercel → the deployment → Logs).
+    console.error("Magic link failed", {
+      status: error.status,
+      code: error.code,
+      message: error.message,
+    });
+    return { status: "error", message: friendlyAuthError(error) };
+  }
   return { status: "sent", message: `Check ${parsed.data} for a sign-in link.` };
 }
 
@@ -66,14 +74,33 @@ export async function signOut() {
 /**
  * Supabase's messages are written for developers. The sign-up trigger
  * refuses emails that aren't on the allowlist, which Supabase reports as a
- * database error.
+ * database error. Anything unexpected keeps a short reference (status and
+ * code) so the cause can be found.
  */
-function friendlyAuthError(message: string) {
-  if (/database error|invite-only|not_allowlisted/i.test(message)) {
+function friendlyAuthError(error: { message: string; status?: number; code?: string }) {
+  const { message, status, code } = error;
+  if (
+    /database error|invite-only|not_allowlisted/i.test(message) ||
+    code === "unexpected_failure"
+  ) {
     return "Salon is invite-only for now, and that email isn't on the guest list.";
   }
-  if (/rate limit|too many/i.test(message)) {
+  if (/rate limit|too many/i.test(message) || status === 429) {
     return "Too many sign-in emails just now. Please wait a minute and try again.";
   }
-  return "Something went wrong signing you in. Please try again.";
+  if (
+    code === "otp_disabled" ||
+    code === "signup_disabled" ||
+    /signups not allowed/i.test(message)
+  ) {
+    return "Email sign-in is switched off in Supabase (Authentication → Sign In / Providers → Email).";
+  }
+  if (status === 401 || /invalid api key/i.test(message)) {
+    return "Supabase didn't accept the app's key. Check NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.";
+  }
+  if (status === 404) {
+    return "Supabase couldn't be found at that address. Check NEXT_PUBLIC_SUPABASE_URL ends in .supabase.co.";
+  }
+  const reference = [status, code].filter(Boolean).join(" ");
+  return `Something went wrong signing you in. Please try again.${reference ? ` (${reference})` : ""}`;
 }
