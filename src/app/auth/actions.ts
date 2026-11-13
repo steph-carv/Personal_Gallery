@@ -79,10 +79,7 @@ export async function signOut() {
  */
 function friendlyAuthError(error: { message: string; status?: number; code?: string }) {
   const { message, status, code } = error;
-  if (
-    /database error|invite-only|not_allowlisted/i.test(message) ||
-    code === "unexpected_failure"
-  ) {
+  if (/database error|invite-only|not_allowlisted/i.test(message)) {
     return "Salon is invite-only for now, and that email isn't on the guest list.";
   }
   if (/rate limit|too many/i.test(message) || status === 429) {
