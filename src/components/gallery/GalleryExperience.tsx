@@ -1,45 +1,74 @@
 "use client";
 
 import { useProgress } from "@react-three/drei";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import GalleryScene from "@/components/three/GalleryScene";
-import { tourOrder } from "@/lib/gallery/tour";
-import type { Room } from "@/lib/gallery/types";
-import { useGalleryStore } from "@/lib/gallery/useGalleryStore";
+import { layoutRooms, roomLabel } from "@/lib/gallery/layout";
+import { galleryTour, tourOrder } from "@/lib/gallery/tour";
+import type { Collection, Room } from "@/lib/gallery/types";
+import { useGalleryStore, type GalleryView } from "@/lib/gallery/useGalleryStore";
 import { useMediaQuery } from "@/lib/hooks/useMediaQuery";
+import { GalleryFlatView } from "./GalleryFlatView";
 import { PaintingDetail } from "./PaintingDetail";
 
+const VIEW_KEY = "salon:view";
+
 /**
- * The walkable gallery page: the 3D scene full-screen, with the 2D interface
- * floating over it: top bar, welcome card, tour bar, and the detail view.
+ * The gallery page: the 3D walkthrough full-screen with the 2D interface
+ * floating over it (top bar, welcome card, tour bar, detail view), or the
+ * flat 2D view for screen readers, keyboard-only use and older devices.
  *
- * Keyboard: WASD / arrows walk (handled by the camera rig), Q / E previous
- * and next painting, Enter steps closer, Esc goes back.
+ * Keyboard (3D): WASD / arrows walk (handled by the camera rig), Q / E
+ * previous and next painting, Enter steps closer, Esc goes back.
  */
-export function GalleryExperience({ room }: { room: Room }) {
-  const placements = useMemo(() => tourOrder(room.placements), [room.placements]);
+export function GalleryExperience({
+  collection,
+  basePath,
+}: {
+  collection: Collection;
+  basePath: string;
+}) {
+  const rooms = useMemo(() => layoutRooms(collection.rooms), [collection.rooms]);
+  const tour = useMemo(() => galleryTour(collection.rooms), [collection.rooms]);
+  const currentRoomId = useGalleryStore((s) => s.currentRoomId);
+  const view = useGalleryStore((s) => s.view);
   const detailId = useGalleryStore((s) => s.detailId);
   const detailReady = useGalleryStore((s) => s.detailReady);
   const mouseLook = useGalleryStore((s) => s.mouseLook);
   const hoveredId = useGalleryStore((s) => s.hoveredId);
   const cuts = useGalleryStore((s) => s.cuts);
 
-  const detailIndex = placements.findIndex((p) => p.id === detailId);
-  const detail = detailIndex >= 0 ? placements[detailIndex] : null;
+  const room = rooms.find((r) => r.id === currentRoomId) ?? rooms[0];
+  const roomTour = useMemo(() => tourOrder(room.placements), [room.placements]);
+
+  // The open painting, its room, and its position in that room.
+  const detail = tour.find((p) => p.id === detailId) ?? null;
+  const detailRoom = detail ? rooms.find((r) => r.placements.includes(detail))! : null;
+  const detailRoomTour = detailRoom ? tourOrder(detailRoom.placements) : [];
 
   const stepDetail = (direction: 1 | -1) => {
-    const next = placements[(detailIndex + direction + placements.length) % placements.length];
+    const index = tour.findIndex((p) => p.id === detailId);
+    const next = tour[(index + direction + tour.length) % tour.length];
     useGalleryStore.getState().openDetail(next.id, { replace: true });
   };
 
-  useKeyboardShortcuts(placements.map((p) => p.id));
+  useKeyboardShortcuts(
+    tour.map((p) => p.id),
+    view,
+  );
+  const setView = useViewPreference(room.id);
+  const works = tour.length;
 
   return (
     <main className="bg-ink relative h-dvh w-full overflow-hidden">
-      <GalleryScene room={room} />
+      {view === "3d" ? (
+        <GalleryScene rooms={rooms} />
+      ) : (
+        <GalleryFlatView collection={collection} rooms={rooms} basePath={basePath} />
+      )}
 
       {/* With reduced motion the camera cuts instead of gliding; soften each cut. */}
-      {cuts > 0 && (
+      {view === "3d" && cuts > 0 && (
         <div
           key={cuts}
           aria-hidden
@@ -47,41 +76,69 @@ export function GalleryExperience({ room }: { room: Room }) {
         />
       )}
 
-      <header className="from-ink/80 pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center justify-between bg-gradient-to-b to-transparent px-4 py-3 sm:px-6">
-        <span className="text-cream font-serif text-2xl tracking-wide">Salon</span>
-        <span className="text-cream/70 text-xs tracking-widest uppercase">
-          Room {room.number} · {room.name}
-        </span>
+      <header
+        className={`absolute inset-x-0 top-0 z-20 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-3 sm:px-6 ${
+          view === "3d"
+            ? "from-ink/80 pointer-events-none bg-gradient-to-b to-transparent"
+            : "bg-ink border-b border-[#2a241d]"
+        }`}
+      >
+        <div className="flex items-baseline gap-4">
+          <span className="text-cream font-serif text-2xl font-semibold tracking-[0.22em]">
+            SALON
+          </span>
+          <span className="text-cream/70 hidden text-xs sm:inline">
+            {collection.collectionName} · {works} works · {rooms.length} rooms
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          {view === "3d" && (
+            <span className="text-cream/70 hidden text-xs tracking-widest uppercase md:inline">
+              {roomLabel(room)}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => setView(view === "3d" ? "2d" : "3d")}
+            className="border-cream/30 text-cream hover:border-cream focus-visible:outline-gilt pointer-events-auto min-h-11 rounded-full border px-4 text-xs font-medium transition focus-visible:outline-2"
+          >
+            {view === "3d" ? "2D view" : "3D view"}
+          </button>
+        </div>
       </header>
 
-      <PaintingList placements={placements} />
-      <LoadingIndicator />
       <Notice />
 
-      {!detail && (
+      {view === "3d" && (
         <>
-          <IntroCard room={room} />
-          <TourBar placements={placements} />
+          <PaintingList placements={roomTour} />
+          <LoadingIndicator />
+          {!detail && (
+            <>
+              <IntroCard room={room} />
+              <TourBar placements={roomTour} />
+            </>
+          )}
+          {mouseLook && !detail && (
+            // Crosshair: grows into a ring when it's over a painting.
+            <div
+              aria-hidden
+              className={`pointer-events-none absolute top-1/2 left-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-full transition-all ${
+                hoveredId ? "border-cream/80 h-6 w-6 border-2" : "bg-cream/70 h-1.5 w-1.5"
+              }`}
+            />
+          )}
         </>
       )}
 
-      {mouseLook && !detail && (
-        // Crosshair: grows into a ring when it's over a painting.
-        <div
-          aria-hidden
-          className={`pointer-events-none absolute top-1/2 left-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-full transition-all ${
-            hoveredId ? "border-cream/80 h-6 w-6 border-2" : "bg-cream/70 h-1.5 w-1.5"
-          }`}
-        />
-      )}
-
-      {detail && (
+      {detail && detailRoom && (
         <PaintingDetail
-          room={room}
+          room={detailRoom}
           placement={detail}
-          index={detailIndex + 1}
-          total={placements.length}
-          visible={detailReady}
+          index={detailRoomTour.indexOf(detail) + 1}
+          total={detailRoomTour.length}
+          // In 3D, wait until the camera arrives; in 2D there's nothing to wait for.
+          visible={view === "2d" || detailReady}
           onPrevious={() => stepDetail(-1)}
           onNext={() => stepDetail(1)}
           onClose={() => useGalleryStore.getState().closeDetail()}
@@ -91,8 +148,70 @@ export function GalleryExperience({ room }: { room: Room }) {
   );
 }
 
+/**
+ * 3D or 2D, remembered on this device. With no saved choice, start in 2D on
+ * devices that can't run the 3D view well: no WebGL 2, or very little memory
+ * or processing power.
+ */
+function useViewPreference(currentRoomId: string) {
+  useEffect(() => {
+    let saved: string | null = null;
+    try {
+      saved = localStorage.getItem(VIEW_KEY);
+    } catch {
+      // Storage can be unavailable (private browsing); fall through to the default.
+    }
+    if (saved === "2d" || saved === "3d") {
+      useGalleryStore.setState({ view: saved });
+      return;
+    }
+    if (!canRun3D()) {
+      useGalleryStore.setState({
+        view: "2d",
+        notice: "Showing the 2D view on this device. You can switch to 3D at the top.",
+      });
+    }
+  }, []);
+
+  return useCallback(
+    (view: GalleryView) => {
+      try {
+        localStorage.setItem(VIEW_KEY, view);
+      } catch {
+        // Not saved; the switch still works for this visit.
+      }
+      const state = useGalleryStore.getState();
+      useGalleryStore.setState({
+        view,
+        // The 3D scene starts in the room you were looking at in 2D.
+        roomRequest:
+          view === "3d"
+            ? { roomId: currentRoomId, seq: (state.roomRequest?.seq ?? 0) + 1 }
+            : state.roomRequest,
+        mouseLook: false,
+        hoveredId: null,
+        focusedId: null,
+      });
+    },
+    [currentRoomId],
+  );
+}
+
+function canRun3D() {
+  try {
+    if (!document.createElement("canvas").getContext("webgl2")) return false;
+  } catch {
+    return false;
+  }
+  const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+  if (memory !== undefined && memory < 2) return false;
+  if (navigator.hardwareConcurrency !== undefined && navigator.hardwareConcurrency < 2)
+    return false;
+  return true;
+}
+
 /** Q / E for previous and next, Enter to step closer, Esc to go back. */
-function useKeyboardShortcuts(order: string[]) {
+function useKeyboardShortcuts(order: string[], view: GalleryView) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -109,7 +228,7 @@ function useKeyboardShortcuts(order: string[]) {
           state.openDetail(order[(index + direction + order.length) % order.length], {
             replace: true,
           });
-        } else {
+        } else if (view === "3d") {
           state.camera.tourStep(direction);
         }
       } else if (e.key === "Escape" && inDetail) {
@@ -122,7 +241,7 @@ function useKeyboardShortcuts(order: string[]) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [order]);
+  }, [order, view]);
 }
 
 function IntroCard({ room }: { room: Room }) {
