@@ -11,12 +11,6 @@ const nextConfig: NextConfig = {
       },
     },
   },
-  async redirects() {
-    return [
-      // Until accounts arrive (Phase 5), the home page opens the starter gallery.
-      { source: "/", destination: "/g/demo", permanent: false },
-    ];
-  },
 };
 
 export default nextConfig;

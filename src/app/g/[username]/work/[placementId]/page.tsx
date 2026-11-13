@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { getCollection } from "@/lib/gallery/collections";
+import { DEMO_USERNAME, getCollection } from "@/lib/data/collections";
+import { starterCollection } from "@/lib/gallery/starterCollection";
 
 /**
  * A painting's own link: /g/[username]/work/[placementId]. The layout reads
@@ -8,22 +9,19 @@ import { getCollection } from "@/lib/gallery/collections";
  * the page title so shared links read well.
  */
 
-function findPlacement(username: string, id: string) {
-  return getCollection(username)
-    ?.rooms.flatMap((r) => r.placements)
-    .find((p) => p.id === id);
-}
-
-export async function generateStaticParams({ params }: { params: { username: string } }) {
-  const collection = getCollection(params.username);
-  return (collection?.rooms ?? []).flatMap((r) => r.placements).map((p) => ({ placementId: p.id }));
+export function generateStaticParams({ params }: { params: { username: string } }) {
+  if (params.username !== DEMO_USERNAME) return [];
+  return starterCollection.rooms.flatMap((r) => r.placements).map((p) => ({ placementId: p.id }));
 }
 
 export async function generateMetadata({
   params,
 }: PageProps<"/g/[username]/work/[placementId]">): Promise<Metadata> {
   const { username, placementId } = await params;
-  const placement = findPlacement(username, placementId);
+  const collection = await getCollection(username);
+  const placement = collection?.rooms
+    .flatMap((r) => r.placements)
+    .find((p) => p.id === placementId);
   if (!placement) return { title: "Salon" };
   const { artwork } = placement;
   return {

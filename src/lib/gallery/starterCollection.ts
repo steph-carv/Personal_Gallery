@@ -411,4 +411,5 @@ export const starterCollection: Collection = {
   username: "demo",
   collectionName: "The Starter Collection",
   rooms: [portraits, landscapes, yourPicks],
+  visibility: "public",
 };

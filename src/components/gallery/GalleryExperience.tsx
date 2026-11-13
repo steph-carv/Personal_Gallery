@@ -1,6 +1,8 @@
 "use client";
 
 import { useProgress } from "@react-three/drei";
+import Link from "next/link";
+import { signOut } from "@/app/auth/actions";
 import { useCallback, useEffect, useMemo } from "react";
 import GalleryScene from "@/components/three/GalleryScene";
 import { layoutRooms, roomLabel } from "@/lib/gallery/layout";
@@ -21,12 +23,21 @@ const VIEW_KEY = "salon:view";
  * Keyboard (3D): WASD / arrows walk (handled by the camera rig), Q / E
  * previous and next painting, Enter steps closer, Esc goes back.
  */
+/** Who's looking, as far as the gallery's interface needs to know. */
+export interface GalleryViewer {
+  username: string;
+  /** True when you're looking at your own gallery. */
+  isOwner: boolean;
+}
+
 export function GalleryExperience({
   collection,
   basePath,
+  viewer,
 }: {
   collection: Collection;
   basePath: string;
+  viewer: GalleryViewer | null;
 }) {
   const rooms = useMemo(() => layoutRooms(collection.rooms), [collection.rooms]);
   const tour = useMemo(() => galleryTour(collection.rooms), [collection.rooms]);
@@ -84,9 +95,12 @@ export function GalleryExperience({
         }`}
       >
         <div className="flex items-baseline gap-4">
-          <span className="text-cream font-serif text-2xl font-semibold tracking-[0.22em]">
+          <Link
+            href="/"
+            className="text-cream focus-visible:outline-gilt pointer-events-auto font-serif text-2xl font-semibold tracking-[0.22em] focus-visible:outline-2"
+          >
             SALON
-          </span>
+          </Link>
           <span className="text-cream/70 hidden text-xs sm:inline">
             {collection.collectionName} · {works} works · {rooms.length} rooms
           </span>
@@ -97,6 +111,15 @@ export function GalleryExperience({
               {roomLabel(room)}
             </span>
           )}
+          {viewer?.isOwner && collection.visibility === "private" && (
+            <span
+              title="Only you can see this gallery."
+              className="border-gilt/50 text-gilt pointer-events-auto rounded-full border px-3 py-1 text-xs"
+            >
+              Private
+            </span>
+          )}
+          <AccountLinks viewer={viewer} />
           <button
             type="button"
             onClick={() => setView(view === "3d" ? "2d" : "3d")}
@@ -145,6 +168,33 @@ export function GalleryExperience({
         />
       )}
     </main>
+  );
+}
+
+/** Sign in, or (signed in) your own gallery and sign out. */
+function AccountLinks({ viewer }: { viewer: GalleryViewer | null }) {
+  const linkClass =
+    "pointer-events-auto inline-flex min-h-11 items-center rounded-full px-3 text-xs font-medium text-cream/80 transition hover:text-cream focus-visible:outline-2 focus-visible:outline-gilt";
+  if (!viewer) {
+    return (
+      <Link href="/login" className={linkClass}>
+        Sign in
+      </Link>
+    );
+  }
+  return (
+    <>
+      {!viewer.isOwner && (
+        <Link href={`/g/${viewer.username}`} className={linkClass}>
+          My gallery
+        </Link>
+      )}
+      <form action={signOut} className="pointer-events-auto">
+        <button type="submit" className={linkClass}>
+          Sign out
+        </button>
+      </form>
+    </>
   );
 }
 
