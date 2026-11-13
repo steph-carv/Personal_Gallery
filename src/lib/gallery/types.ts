@@ -63,7 +63,7 @@ export interface Placement {
   personalNote?: string;
 }
 
-/** Per-room look (§7). Only the options Phase 2 uses so far. */
+/** Per-room look (§7). Validated by roomThemeSchema in schemas.ts. */
 export interface RoomTheme {
   wallColor: string;
   lowerWallColor: string;
@@ -94,4 +94,7 @@ export interface Collection {
   username: string;
   collectionName: string;
   rooms: Room[];
+  /** The owner's account id (absent for the built-in demo). */
+  ownerId?: string;
+  visibility: "public" | "private";
 }
