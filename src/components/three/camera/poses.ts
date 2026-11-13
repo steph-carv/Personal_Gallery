@@ -1,8 +1,8 @@
 import { MathUtils, Vector3 } from "three";
-import type { Placement, Room } from "@/lib/gallery/types";
-import { paintingSize } from "../art/paintingSize";
+import type { PlacedRoom } from "@/lib/gallery/layout";
+import type { Placement } from "@/lib/gallery/types";
+import { framedSize, wallToWorld } from "../art/placementGeometry";
 import { LABEL_GAP, LABEL_SIZE } from "../art/WallLabel";
-import { frameWidth } from "../geometry/profiles";
 import { wallTransform } from "../room/wallTransforms";
 import { BODY_RADIUS, clampToWalkable, type FloorPlan } from "./navigation";
 
@@ -27,37 +27,6 @@ interface Lens {
   aspect: number;
 }
 
-/**
- * A point in front of a placement, in world space. `localZ` is the distance
- * out from the wall, `localY` the height (default: the painting's centre) and
- * `offsetX` a shift along the wall to the right (see wallTransforms.ts).
- */
-export function wallToWorld(
-  room: Room,
-  placement: Placement,
-  localZ: number,
-  localY?: number,
-  offsetX = 0,
-) {
-  const t = wallTransform(room, placement.wall);
-  const cos = Math.cos(t.rotationY);
-  const sin = Math.sin(t.rotationY);
-  const x = placement.x + offsetX;
-  return new Vector3(
-    t.position[0] + x * cos + localZ * sin,
-    localY ?? placement.y,
-    t.position[2] - x * sin + localZ * cos,
-  );
-}
-
-/** The painting's outer size including its frame, in metres. */
-function framedSize(placement: Placement) {
-  const { width, height } = paintingSize(placement.artwork);
-  const fw =
-    placement.frame.style === "none" ? 0 : frameWidth(placement.frame, Math.max(width, height));
-  return { width: width + fw * 2, height: height + fw * 2 };
-}
-
 /** Distance at which a `w` × `h` rectangle just fills the view. */
 function fitDistance(w: number, h: number, lens: Lens) {
   const halfV = MathUtils.degToRad(lens.fov) / 2;
@@ -66,7 +35,7 @@ function fitDistance(w: number, h: number, lens: Lens) {
 }
 
 /** Facing the wall a placement hangs on, looking at the painting's centre from `distance` away at `eyeY`. */
-function facing(room: Room, placement: Placement, distance: number, eyeY: number) {
+function facing(room: PlacedRoom, placement: Placement, distance: number, eyeY: number) {
   const yaw = wallTransform(room, placement.wall).rotationY;
   const pitch = Math.atan2(placement.y - eyeY, distance);
   return { yaw, pitch };
@@ -77,7 +46,7 @@ function facing(room: Room, placement: Placement, distance: number, eyeY: number
  * whole frame and its label, at eye height, nudged off the bench if needed.
  */
 export function tourPose(
-  room: Room,
+  room: PlacedRoom,
   placement: Placement,
   plan: FloorPlan,
   lens: Lens,
@@ -114,7 +83,7 @@ export function tourPose(
  * fades in over it instead of showing two paintings at once.
  */
 export function detailPose(
-  room: Room,
+  room: PlacedRoom,
   placement: Placement,
   lens: Lens,
   sideBySide = false,
@@ -145,4 +114,21 @@ export function detailPose(
 /** Yaw that looks along the direction from `a` to `b` on the floor. */
 export function headingYaw(a: { x: number; z: number }, b: { x: number; z: number }) {
   return Math.atan2(-(b.x - a.x), -(b.z - a.z));
+}
+
+/**
+ * Just inside a room's entrance (its south side, where the doorway from the
+ * previous room is), looking north down the room and through the next door.
+ */
+export function entryPose(room: PlacedRoom): CameraPose {
+  const fromSouthWall = room.index === 0 ? 1.1 : 1.6;
+  return {
+    position: new Vector3(
+      room.origin.x,
+      EYE_HEIGHT,
+      room.origin.z + room.depth / 2 - fromSouthWall,
+    ),
+    yaw: 0,
+    pitch: Math.atan2(1.9 - EYE_HEIGHT, room.depth),
+  };
 }

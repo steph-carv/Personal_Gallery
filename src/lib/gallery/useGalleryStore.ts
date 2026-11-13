@@ -16,13 +16,24 @@ export interface CameraCommands {
   tourTo: (placementId: string) => void;
   /** Glide to the next (+1) or previous (−1) painting on the tour. */
   tourStep: (direction: 1 | -1) => void;
-  /** Glide to the first painting on the tour. */
+  /** Glide to the first painting in the room you're in. */
   tourStart: () => void;
   /** Capture the mouse for first-person looking (desktop). */
   startMouseLook: () => void;
 }
 
+export type GalleryView = "3d" | "2d";
+
 export interface GalleryState {
+  /** Room the visitor is in (3D: worked out from where the camera stands). */
+  currentRoomId: string | null;
+  /**
+   * Ask the 3D view to go to a room (from the URL, or the 2D view's room
+   * tabs). `seq` changes on every request, so asking twice still counts.
+   */
+  roomRequest: { roomId: string; seq: number } | null;
+  /** 3D walkthrough, or the flat 2D view (accessible / low-power fallback). */
+  view: GalleryView;
   /** Painting under the cursor (or crosshair), if any. */
   hoveredId: string | null;
   /** Painting the tour is currently standing at, if any. */
@@ -51,6 +62,9 @@ export interface GalleryState {
 const noop = () => {};
 
 export const useGalleryStore = create<GalleryState>(() => ({
+  currentRoomId: null,
+  roomRequest: null,
+  view: "3d",
   hoveredId: null,
   focusedId: null,
   detailId: null,
