@@ -90,7 +90,7 @@ export function PaintingDetail({
           <figcaption className="sr-only">
             {artwork.title}, {artwork.artist}
           </figcaption>
-          <nav aria-label="Paintings in this room" className="flex items-center gap-2 text-sm">
+          <nav aria-label="Previous and next painting" className="flex items-center gap-2 text-sm">
             <DetailButton onClick={onPrevious} label="Previous painting">
               ← Previous
             </DetailButton>
@@ -129,7 +129,7 @@ export function PaintingDetail({
               <h3 className="font-serif text-xl">About the work</h3>
               <p className="text-ink/85 mt-2 text-sm leading-relaxed">{artwork.description}</p>
               {artwork.descriptionCredit && (
-                <p className="text-ink/55 mt-1 text-xs">{artwork.descriptionCredit}</p>
+                <p className="text-ink/70 mt-1 text-xs">{artwork.descriptionCredit}</p>
               )}
             </section>
           )}

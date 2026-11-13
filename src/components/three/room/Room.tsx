@@ -1,104 +1,127 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
-import type { Texture } from "three";
-import type { Room as RoomData } from "@/lib/gallery/types";
-import { sweepProfile, rectanglePath } from "../geometry/sweepProfile";
+import { PlaneGeometry } from "three";
+import type { PlacedRoom } from "@/lib/gallery/layout";
 import { corniceProfile, dadoProfile, skirtingProfile } from "../geometry/profiles";
-import {
-  createOakFloorTextures,
-  createPlasterTexture,
-  FLOOR_TILE_METRES,
-} from "../textures/proceduralTextures";
-import { DADO_HEIGHT, WALLS, wallTransform } from "./wallTransforms";
+import { rectanglePath, sweepProfile, type ProfilePoint } from "../geometry/sweepProfile";
+import { sharedTextures } from "../textures/proceduralTextures";
 import { Ceiling } from "./Ceiling";
+import { Doorway } from "./Doorway";
+import { doorsOn, trimPaths, wallRectGeometry, wallRects } from "./doorways";
+import { EmptyRoomSign } from "./EmptyRoomSign";
+import { DADO_HEIGHT, WALLS, wallTransform } from "./wallTransforms";
 
 /**
- * The room's architecture: four walls (upper and lower sections), cornice,
- * dado rail, skirting, oak floor and ceiling with a skylight.
+ * One room's architecture, centred on its own origin (the parent group puts
+ * it in place): four walls with doorways cut out, cornice, dado rail and
+ * skirting (broken at the doorways), oak floor, skylit ceiling, and a sign if
+ * the room is empty.
  *
- * Walls and floor receive shadows but don't cast them; only frames and the
- * bench cast, which keeps shadow rendering cheap.
+ * Walls and floor receive shadows but don't cast them; only frames, trims and
+ * the bench cast, which keeps shadow rendering cheap.
  */
-export function Room({ room }: { room: RoomData }) {
+export function Room({ room }: { room: PlacedRoom }) {
   const { width, depth, height, theme } = room;
+  const textures = sharedTextures();
 
-  const plaster = useMemo(() => createPlasterTexture(), []);
-  const floor = useMemo(() => {
-    const textures = createOakFloorTextures();
-    for (const t of [textures.map, textures.roughnessMap]) {
-      t.repeat.set(width / FLOOR_TILE_METRES, depth / FLOOR_TILE_METRES);
-    }
-    return textures;
-  }, [width, depth]);
+  // Walls: each band (lower, upper) split into pieces around the doorways.
+  const walls = useMemo(
+    () =>
+      WALLS.map((wall) => {
+        const t = wallTransform(room, wall);
+        const doors = doorsOn(room, wall);
+        const upper = wallRects(t.length, DADO_HEIGHT, height, doors).map((r) =>
+          wallRectGeometry(r, 1),
+        );
+        const lower = wallRects(t.length, 0, DADO_HEIGHT, doors).map((r) => wallRectGeometry(r, 1));
+        return { wall, t, doors, upper, lower };
+      }),
+    [room, height],
+  );
 
-  // Trims are swept around the room's floor plan, then stood upright: the
-  // profile's z becomes height. rotateX(-90°) maps plan y to world -z, which
-  // is fine because the plan is symmetric.
+  // Trims are swept round the room's floor plan, then stood upright: the
+  // profile's z becomes height. rotateX(−90°) maps plan y to world −z.
   const trims = useMemo(() => {
-    const plan = rectanglePath(width, depth);
-    const build = (profile: Parameters<typeof sweepProfile>[1]) => {
-      const geometry = sweepProfile(plan, profile, { closed: true });
-      geometry.rotateX(-Math.PI / 2);
-      return geometry;
-    };
+    const build = (profile: ProfilePoint[], broken: boolean) =>
+      (broken ? trimPaths(room) : [{ path: rectanglePath(width, depth), closed: true }]).map(
+        ({ path, closed }) => {
+          const geometry = sweepProfile(path, profile, { closed, caps: !closed });
+          geometry.rotateX(-Math.PI / 2);
+          return geometry;
+        },
+      );
     return {
-      cornice: build(corniceProfile(height)),
-      dado: build(dadoProfile(DADO_HEIGHT)),
-      skirting: build(skirtingProfile()),
+      // The cornice runs above the doorways, so it's never broken.
+      cornice: build(corniceProfile(height), false),
+      dado: build(dadoProfile(DADO_HEIGHT), true),
+      skirting: build(skirtingProfile(), true),
     };
-  }, [width, depth, height]);
+  }, [room, width, depth, height]);
+
+  // Floor with UVs in metres, so the shared floor texture tiles at true size.
+  const floor = useMemo(() => {
+    const geometry = new PlaneGeometry(width, depth);
+    const uv = geometry.getAttribute("uv");
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * width, uv.getY(i) * depth);
+    return geometry;
+  }, [width, depth]);
 
   useEffect(
     () => () => {
-      plaster.dispose();
-      floor.map.dispose();
-      floor.roughnessMap.dispose();
-      Object.values(trims).forEach((g) => g.dispose());
+      walls.forEach((w) => [...w.upper, ...w.lower].forEach((g) => g.dispose()));
+      Object.values(trims).forEach((list) => list.forEach((g) => g.dispose()));
+      floor.dispose();
     },
-    [plaster, floor, trims],
+    [walls, trims, floor],
   );
+
+  // An empty room gets its sign on the first wall without a doorway, north first.
+  const signWall =
+    room.placements.length === 0 ? WALLS.find((w) => doorsOn(room, w).length === 0) : undefined;
 
   return (
     <group>
-      {WALLS.map((wall) => {
-        const t = wallTransform(room, wall);
-        return (
-          <group key={wall} position={t.position} rotation-y={t.rotationY}>
-            <WallSection
-              length={t.length}
-              bottom={DADO_HEIGHT}
-              top={height}
-              color={theme.wallColor}
-              plaster={plaster}
-            />
-            <WallSection
-              length={t.length}
-              bottom={0}
-              top={DADO_HEIGHT}
-              color={theme.lowerWallColor}
-              plaster={plaster}
-            />
-          </group>
-        );
-      })}
+      {walls.map(({ wall, t, doors, upper, lower }) => (
+        <group key={wall} position={t.position} rotation-y={t.rotationY}>
+          {upper.map((geometry, i) => (
+            <mesh key={`u${i}`} geometry={geometry} receiveShadow>
+              <WallMaterial color={theme.wallColor} />
+            </mesh>
+          ))}
+          {lower.map((geometry, i) => (
+            <mesh key={`l${i}`} geometry={geometry} receiveShadow>
+              <WallMaterial color={theme.lowerWallColor} />
+            </mesh>
+          ))}
+          {doors.map((door) => (
+            <Doorway key={door.toRoomId} door={door} trimColor={theme.trimColor} />
+          ))}
+          {wall === signWall && <EmptyRoomSign />}
+        </group>
+      ))}
 
-      <mesh geometry={trims.cornice} receiveShadow>
-        <meshStandardMaterial color={theme.trimColor} roughness={0.7} />
-      </mesh>
-      <mesh geometry={trims.dado} receiveShadow castShadow>
-        <meshStandardMaterial color={theme.trimColor} roughness={0.55} />
-      </mesh>
-      <mesh geometry={trims.skirting} receiveShadow>
-        <meshStandardMaterial color="#1c1210" roughness={0.5} />
-      </mesh>
+      {trims.cornice.map((geometry, i) => (
+        <mesh key={`c${i}`} geometry={geometry} receiveShadow>
+          <meshStandardMaterial color={theme.trimColor} roughness={0.7} />
+        </mesh>
+      ))}
+      {trims.dado.map((geometry, i) => (
+        <mesh key={`d${i}`} geometry={geometry} receiveShadow castShadow>
+          <meshStandardMaterial color={theme.trimColor} roughness={0.55} />
+        </mesh>
+      ))}
+      {trims.skirting.map((geometry, i) => (
+        <mesh key={`s${i}`} geometry={geometry} receiveShadow>
+          <meshStandardMaterial color="#1c1210" roughness={0.5} />
+        </mesh>
+      ))}
 
       {/* Floor. Tagged so clicks on it mean "walk here". */}
-      <mesh rotation-x={-Math.PI / 2} receiveShadow userData={{ floor: true }}>
-        <planeGeometry args={[width, depth]} />
+      <mesh geometry={floor} rotation-x={-Math.PI / 2} receiveShadow userData={{ floor: true }}>
         <meshStandardMaterial
-          map={floor.map}
-          roughnessMap={floor.roughnessMap}
+          map={textures.floor.map}
+          roughnessMap={textures.floor.roughnessMap}
           roughness={0.85}
           metalness={0}
           envMapIntensity={0.6}
@@ -110,42 +133,16 @@ export function Room({ room }: { room: RoomData }) {
   );
 }
 
-/** One horizontal band of a wall, in the wall's local frame. */
-function WallSection({
-  length,
-  bottom,
-  top,
-  color,
-  plaster,
-}: {
-  length: number;
-  bottom: number;
-  top: number;
-  color: string;
-  plaster: Texture;
-}) {
-  const sectionHeight = top - bottom;
-  // Each section needs its own repeat, so give it a lightweight clone (the
-  // image data is shared).
-  const map = useMemo(() => {
-    const clone = plaster.clone();
-    clone.repeat.set(length / 2.5, sectionHeight / 2.5);
-    clone.needsUpdate = true;
-    return clone;
-  }, [plaster, length, sectionHeight]);
-  useEffect(() => () => map.dispose(), [map]);
-
+function WallMaterial({ color }: { color: string }) {
+  const { plaster } = sharedTextures();
   return (
-    <mesh position={[0, bottom + sectionHeight / 2, 0]} receiveShadow>
-      <planeGeometry args={[length, sectionHeight]} />
-      <meshStandardMaterial
-        color={color}
-        map={map}
-        bumpMap={map}
-        bumpScale={0.4}
-        roughness={0.92}
-        envMapIntensity={0.4}
-      />
-    </mesh>
+    <meshStandardMaterial
+      color={color}
+      map={plaster}
+      bumpMap={plaster}
+      bumpScale={0.4}
+      roughness={0.92}
+      envMapIntensity={0.4}
+    />
   );
 }

@@ -13,12 +13,13 @@ import {
   type Object3D,
   type PerspectiveCamera,
 } from "three";
-import { tourOrder } from "@/lib/gallery/tour";
-import type { Placement, Room } from "@/lib/gallery/types";
+import type { PlacedRoom } from "@/lib/gallery/layout";
+import { galleryTour } from "@/lib/gallery/tour";
+import type { Placement } from "@/lib/gallery/types";
 import { useGalleryStore } from "@/lib/gallery/useGalleryStore";
 import { floorCursor } from "./floorCursor";
-import { clampToWalkable, planPath, resolveCollisions, type FloorPlan } from "./navigation";
-import { detailPose, EYE_HEIGHT, headingYaw, tourPose, type CameraPose } from "./poses";
+import { clampToWalkable, planPath, resolveCollisions, roomAt, type FloorPlan } from "./navigation";
+import { detailPose, entryPose, EYE_HEIGHT, headingYaw, tourPose, type CameraPose } from "./poses";
 
 /**
  * The camera rig: the one place that moves the camera.
@@ -26,8 +27,12 @@ import { detailPose, EYE_HEIGHT, headingYaw, tourPose, type CameraPose } from ".
  * It keeps the camera's pose as position + yaw + pitch, and changes it from:
  * - keyboard walking (WASD / arrows, Shift to hurry), with collisions;
  * - dragging to look around (mouse or touch), or mouse look (pointer lock);
- * - glides: smooth, eased camera moves along a path that avoids the bench,
- *   used for click-to-walk, the painting tour and stepping into the detail view.
+ * - glides: smooth, eased camera moves along a path through doorways and
+ *   round benches, used for click-to-walk, the painting tour, going to a
+ *   room, and stepping into the detail view. Very long trips (several rooms
+ *   away) fade across instead of gliding.
+ *
+ * It also works out which room you're standing in (store.currentRoomId).
  *
  * Clicks and hovers are worked out here too, by casting a ray from the
  * pointer (or from the screen centre in mouse-look mode) into the scene and
@@ -42,6 +47,8 @@ const FAST_SPEED = 2.8;
 const EASING = 7;
 /** Glide speed along the floor, in metres per second. */
 const GLIDE_SPEED = 1.6;
+/** Trips longer than this fade across instead of gliding, in metres. */
+const LONGEST_GLIDE = 16;
 /** Mouse-look sensitivity, in radians per pixel of mouse movement. */
 const MOUSE_LOOK_SPEED = 0.0022;
 /** A press that moves less than this many pixels is a click, not a drag. */
@@ -79,26 +86,32 @@ interface Glide {
 }
 
 interface CameraRigProps {
-  room: Room;
+  rooms: PlacedRoom[];
   plan: FloorPlan;
   reducedMotion: boolean;
 }
 
-export function CameraRig({ room, plan, reducedMotion }: CameraRigProps) {
+export function CameraRig({ rooms, plan, reducedMotion }: CameraRigProps) {
   const camera = useThree((s) => s.camera) as PerspectiveCamera;
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
   const store = useGalleryStore;
 
-  const placements = useMemo(() => tourOrder(room.placements), [room.placements]);
+  const placements = useMemo(() => galleryTour(rooms), [rooms]);
   const byId = useMemo(
-    () => new Map<string, Placement>(room.placements.map((p) => [p.id, p])),
-    [room.placements],
+    () => new Map<string, Placement>(placements.map((p) => [p.id, p])),
+    [placements],
   );
+  /** The room each painting hangs in. */
+  const roomOf = useMemo(() => {
+    const map = new Map<string, PlacedRoom>();
+    for (const room of rooms) for (const p of room.placements) map.set(p.id, room);
+    return map;
+  }, [rooms]);
 
   // The pose. Position lives on the camera itself.
   const yaw = useRef(0);
-  const pitch = useRef(Math.atan2(1.9 - EYE_HEIGHT, room.depth));
+  const pitch = useRef(entryPose(rooms[0]).pitch);
   const velocity = useRef(new Vector3());
   const glide = useRef<Glide | null>(null);
   /** Where to go back to when the detail view closes. */
@@ -170,6 +183,7 @@ export function CameraRig({ room, plan, reducedMotion }: CameraRigProps) {
         MathUtils.euclideanModulo(pose.yaw - yaw.current + Math.PI, Math.PI * 2) - Math.PI;
       const pitchChange = pose.pitch - pitch.current;
       const distance = path.getLength() + Math.abs(pose.position.y - camera.position.y);
+      if (distance > LONGEST_GLIDE) return cutTo(pose, options.onArrive);
       const turn = Math.max(Math.abs(yawChange), Math.abs(pitchChange));
       const duration = MathUtils.clamp(Math.max(distance / GLIDE_SPEED, turn / 1.4), 0.5, 3.2);
 
@@ -196,9 +210,9 @@ export function CameraRig({ room, plan, reducedMotion }: CameraRigProps) {
       const placement = byId.get(id);
       if (!placement || store.getState().detailId) return;
       store.setState({ focusedId: id, introDismissed: true });
-      glideTo(tourPose(room, placement, plan, lens()));
+      glideTo(tourPose(roomOf.get(id)!, placement, plan, lens()));
     },
-    [byId, store, glideTo, room, plan, lens],
+    [byId, store, glideTo, roomOf, plan, lens],
   );
 
   const tourStep = useCallback(
@@ -209,21 +223,27 @@ export function CameraRig({ room, plan, reducedMotion }: CameraRigProps) {
         const next = placements[(index + direction + placements.length) % placements.length];
         return tourTo(next.id);
       }
-      // Not at a painting yet: start with the one nearest to where you stand.
+      // Not at a painting yet: start with the one in this room nearest to
+      // where you stand (in an empty room, the nearest anywhere).
       const here = camera.position;
-      const nearest = [...placements].sort(
-        (a, b) =>
-          tourPose(room, a, plan, lens()).position.distanceTo(here) -
-          tourPose(room, b, plan, lens()).position.distanceTo(here),
+      const { currentRoomId } = store.getState();
+      const inRoom = placements.filter((p) => roomOf.get(p.id)?.id === currentRoomId);
+      const distance = (p: Placement) =>
+        tourPose(roomOf.get(p.id)!, p, plan, lens()).position.distanceTo(here);
+      const nearest = [...(inRoom.length ? inRoom : placements)].sort(
+        (a, b) => distance(a) - distance(b),
       )[0];
       if (nearest) tourTo(nearest.id);
     },
-    [store, placements, tourTo, camera, room, plan, lens],
+    [store, placements, tourTo, camera, roomOf, plan, lens],
   );
 
+  /** "Start the tour": the first painting in this room, or the first anywhere. */
   const tourStart = useCallback(() => {
-    if (placements[0]) tourTo(placements[0].id);
-  }, [placements, tourTo]);
+    const { currentRoomId } = store.getState();
+    const first = placements.find((p) => roomOf.get(p.id)?.id === currentRoomId) ?? placements[0];
+    if (first) tourTo(first.id);
+  }, [store, placements, roomOf, tourTo]);
 
   const walkTo = useCallback(
     (point: Vector3) => {
@@ -264,6 +284,7 @@ export function CameraRig({ room, plan, reducedMotion }: CameraRigProps) {
     if (process.env.NODE_ENV !== "development") return;
     (window as unknown as { salonDebug: object }).salonDebug = {
       camera,
+      scene,
       store,
       view: (from: [number, number, number], at: [number, number, number]) => {
         glide.current = null;
@@ -272,7 +293,7 @@ export function CameraRig({ room, plan, reducedMotion }: CameraRigProps) {
         pitch.current = Math.atan2(at[1] - from[1], Math.hypot(at[0] - from[0], at[2] - from[2]));
       },
     };
-  }, [camera, store]);
+  }, [camera, scene, store]);
 
   /* ---------------------------------------------------------------------- */
   /* The detail view (driven by the URL, via the store)                      */
@@ -290,7 +311,10 @@ export function CameraRig({ room, plan, reducedMotion }: CameraRigProps) {
           // Remember where to return to. A deep link has nowhere to return
           // to, so use the painting's tour spot.
           returnTo.current = initial
-            ? { pose: tourPose(room, placement, plan, lens()), focusedId: placement.id }
+            ? {
+                pose: tourPose(roomOf.get(placement.id)!, placement, plan, lens()),
+                focusedId: placement.id,
+              }
             : { pose: currentPose(), focusedId: store.getState().focusedId };
           if (document.pointerLockElement) document.exitPointerLock();
         }
@@ -303,7 +327,7 @@ export function CameraRig({ room, plan, reducedMotion }: CameraRigProps) {
         });
         // Matches the overlay's `lg` breakpoint, where it goes side by side.
         const sideBySide = window.innerWidth >= 1024 && camera.aspect > 1;
-        const pose = detailPose(room, placement, lens(), sideBySide);
+        const pose = detailPose(roomOf.get(placement.id)!, placement, lens(), sideBySide);
         const arrive = () => store.setState({ detailReady: true });
         if (initial) cutTo(pose, arrive);
         else glideTo(pose, { onArrive: arrive });
@@ -328,7 +352,40 @@ export function CameraRig({ room, plan, reducedMotion }: CameraRigProps) {
     return store.subscribe((state, prev) => {
       if (state.detailId !== prev.detailId) onDetailChange(prev.detailId, state.detailId);
     });
-  }, [store, byId, room, plan, lens, currentPose, cutTo, glideTo, camera]);
+  }, [store, byId, roomOf, plan, lens, currentPose, cutTo, glideTo, camera]);
+
+  /* ---------------------------------------------------------------------- */
+  /* Going to a room (from the URL or the 2D view's room tabs)               */
+  /* ---------------------------------------------------------------------- */
+
+  useEffect(() => {
+    const goToRoom = (roomId: string, initial: boolean) => {
+      const room = rooms.find((r) => r.id === roomId);
+      if (!room || store.getState().detailId) return;
+      store.setState({ focusedId: null, currentRoomId: room.id });
+      // Instantly on first load; otherwise glide (or fade, if it's far).
+      if (initial) cutTo(entryPose(room));
+      else glideTo(entryPose(room));
+    };
+
+    // On first load: start in the requested room, or at the entrance.
+    const request = store.getState().roomRequest;
+    if (request) goToRoom(request.roomId, true);
+    else if (!store.getState().detailId) {
+      const start = entryPose(rooms[0]);
+      camera.position.copy(start.position);
+      yaw.current = start.yaw;
+      pitch.current = start.pitch;
+    }
+
+    return store.subscribe((state, prev) => {
+      if (state.roomRequest && state.roomRequest !== prev.roomRequest) {
+        goToRoom(state.roomRequest.roomId, false);
+      }
+    });
+    // Runs once on mount; later requests arrive through the subscription.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* ---------------------------------------------------------------------- */
   /* Input                                                                   */
@@ -544,6 +601,10 @@ export function CameraRig({ room, plan, reducedMotion }: CameraRigProps) {
     }
 
     camera.rotation.set(pitch.current, yaw.current, 0, "YXZ");
+
+    // Which room are we in? (Drives the room name, URL and picture lights.)
+    const here = roomAt({ x: camera.position.x, z: camera.position.z }, plan);
+    if (here && here !== state.currentRoomId) store.setState({ currentRoomId: here });
 
     // 3. Hover: what's under the pointer (or the crosshair in mouse look)?
     const canHover =

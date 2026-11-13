@@ -133,3 +133,21 @@ export function skirtingProfile(height = 0.24): ProfilePoint[] {
     { d: 0, z: height },
   );
 }
+
+/**
+ * Doorway architrave: a flat moulding round the opening with a small bead on
+ * the inner edge, `width` metres wide. Walked inner edge → outer edge.
+ */
+export function architraveProfile(width: number): ProfilePoint[] {
+  return joinProfile(
+    { d: 0, z: 0 },
+    { d: 0, z: 0.022 },
+    arc(0.012, 0.024, 0.012, 180, 20, 5), // bead along the opening
+    { d: 0.035, z: 0.03 },
+    { d: width - 0.03, z: 0.036 },
+    arc(width - 0.03, 0.026, 0.01, 90, 0, 3),
+    { d: width - 0.02, z: 0.026 },
+    { d: width, z: 0.02 },
+    { d: width, z: 0 },
+  );
+}

@@ -3,7 +3,7 @@
 A museum you curate yourself: a 3D gallery you walk through, hang open-access paintings in,
 and style room by room. The full brief is in [`HANDOVER.md`](./HANDOVER.md).
 
-**Status:** Phase 3 (navigation and painting detail) of the build order in HANDOVER §10.
+**Status:** Phase 4 (multiple rooms and the 2D view) of the build order in HANDOVER §10.
 
 ## Stack
 
@@ -28,7 +28,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open http://localhost:3000.
+Open http://localhost:3000 (it opens the starter gallery at `/g/demo`).
 
 ### Getting around
 
@@ -41,11 +41,19 @@ Open http://localhost:3000.
 | Step closer (detail view) | Click a painting, or Enter on the tour   | Tap a painting   |
 | Back to the room          | Esc, Back to the room, or browser Back   | Back to the room |
 
-Every painting has its own link, `/work/[placementId]` (e.g. `/work/p1`), which opens straight
-into its detail view.
+Walk through a doorway to reach the next room; the plaque above each doorway names it. The
+**2D view** button in the top bar switches to a flat, accessible version of the gallery (it's
+remembered on that device, and devices that can't run 3D well start in it).
+
+| Link                             | Opens                                  |
+| -------------------------------- | -------------------------------------- |
+| `/g/demo`                        | The gallery, at the entrance to Room 1 |
+| `/g/demo/landscapes-and-the-sea` | A room, by its slug                    |
+| `/g/demo/work/p10`               | A painting's detail view               |
 
 In development, the browser console has `salonDebug.view([x, y, z], [lookX, lookY, lookZ])` to
-stand somewhere and look at a point, and `salonDebug.store` for the shared UI state.
+stand somewhere and look at a point, `salonDebug.store` for the shared UI state and
+`salonDebug.scene` for the three.js scene.
 
 ## Scripts
 
@@ -75,18 +83,18 @@ See [`.env.example`](./.env.example). All are validated at start-up in `src/lib/
 ```
 src/
   app/                       routes (App Router): layout, pages, global styles
-    (gallery)/               the gallery layout (stays mounted) + / and /work/[placementId]
+    g/[username]/            the gallery layout (stays mounted) + room and painting pages
   components/
-    gallery/                 2D interface: tour bar, welcome card, detail overlay, zoom viewer
+    gallery/                 2D interface: tour bar, detail overlay, zoom viewer, 2D view, URL sync
     three/
       GalleryScene.tsx       the Canvas: renderer, lights, environment, what goes where
-      room/                  architecture: walls + trims, floor, ceiling/skylight, bench
+      room/                  architecture: walls, doorways + plaques, trims, floor, ceiling, bench
       art/                   a hung painting: canvas, frame, wall label, spotlight
       geometry/              sweepProfile (frames and mouldings) and the profiles
       textures/              floor, plaster, gilt and leather textures drawn in code
-      camera/                the camera rig (all movement), viewing poses, path planning
+      camera/                the camera rig (all movement), viewing poses, floor plan + routing
   lib/
-    gallery/                 data types, the hard-coded Room 1, tour order, shared state (Zustand)
+    gallery/                 data types, starter collection, room layout, tour order, shared state
     hooks/                   media-query and reduced-motion hooks
     config.ts                APP_MODE (personal / public)
     env.ts                   validated environment variables
@@ -102,6 +110,11 @@ public/art/starter/          starter collection images (sources in CREDITS.md)
   face it, y up, z out into the room. Paintings are placed in these wall coordinates, which is
   also how they're stored (`placements.wall`, `x`, `y`).
 - Paintings hang at their real size when it's known (`art/paintingSize.ts`).
+- Rooms are laid out in a line running north (`lib/gallery/layout.ts`), joined by doorways in
+  the middle of their north and south walls. Each room has an `origin` in the world; room
+  components are drawn round their own centre and moved into place.
+- Only the current room and its neighbours are built (`GalleryScene.tsx`). The picture
+  spotlights are a fixed pool aimed at the current room (`art/PictureLights.tsx`).
 - The camera is only ever moved by `camera/CameraRig.tsx`. Its pose is position + yaw + pitch
   (yaw 0 looks north; positive turns left). Everything else asks it to move through the store's
   `camera` commands or by changing `detailId`.

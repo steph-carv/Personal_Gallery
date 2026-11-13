@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CanvasTexture, SRGBColorSpace } from "three";
 import type { Artwork } from "@/lib/gallery/types";
+import { makeCanvas, useCanvasTexture, wrapText, type Fonts } from "../textures/canvasText";
 
 /** Card size in metres: about the size of a real museum label. */
 export const LABEL_SIZE = { width: 0.2, height: 0.14 };
@@ -15,9 +14,7 @@ const PX_PER_METRE = 5600; // ~1120 × 784 px: crisp when you walk right up to i
  * The cream wall label beside each painting: artist, life dates, title,
  * date, medium and the museum that holds it.
  *
- * The text is drawn onto a canvas and used as a texture. That lets us use the
- * site's own fonts (loaded by next/font) without shipping separate font files
- * for 3D text, and costs a single draw call per label.
+ * The text is drawn onto a canvas texture in the site's fonts (canvasText.ts).
  */
 export function WallLabel({ artwork }: { artwork: Artwork }) {
   const texture = useLabelTexture(artwork);
@@ -29,7 +26,10 @@ export function WallLabel({ artwork }: { artwork: Artwork }) {
       <meshStandardMaterial attach="material-1" color="#e6dcc4" roughness={0.8} />
       <meshStandardMaterial attach="material-2" color="#e6dcc4" roughness={0.8} />
       <meshStandardMaterial attach="material-3" color="#e6dcc4" roughness={0.8} />
+      {/* Keyed on the texture: a material built before its map existed
+          would keep rendering without it. */}
       <meshStandardMaterial
+        key={texture ? "drawn" : "blank"}
         attach="material-4"
         color={texture ? "#ffffff" : "#efe7d4"}
         map={texture}
@@ -41,52 +41,13 @@ export function WallLabel({ artwork }: { artwork: Artwork }) {
 }
 
 function useLabelTexture(artwork: Artwork) {
-  const [texture, setTexture] = useState<CanvasTexture | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    let created: CanvasTexture | null = null;
-
-    const fonts = readFontFamilies();
-    // Wait for the exact faces we draw with, or the canvas falls back to a
-    // system font and never updates.
-    Promise.all([
-      document.fonts.load(`600 40px ${fonts.sans}`),
-      document.fonts.load(`400 40px ${fonts.sans}`),
-      document.fonts.load(`italic 500 40px ${fonts.serif}`),
-    ])
-      .catch(() => undefined)
-      .then(() => {
-        if (cancelled) return;
-        created = drawLabel(artwork, fonts);
-        setTexture(created);
-      });
-
-    return () => {
-      cancelled = true;
-      created?.dispose();
-    };
-  }, [artwork]);
-
-  return texture;
+  return useCanvasTexture(artwork.id, (fonts) => drawLabel(artwork, fonts));
 }
 
-/** The font-family strings next/font put in CSS variables (see layout.tsx). */
-function readFontFamilies() {
-  const style = getComputedStyle(document.documentElement);
-  return {
-    serif: style.getPropertyValue("--font-cormorant").trim() || "Georgia, serif",
-    sans: style.getPropertyValue("--font-inter").trim() || "system-ui, sans-serif",
-  };
-}
-
-function drawLabel(artwork: Artwork, fonts: { serif: string; sans: string }) {
+function drawLabel(artwork: Artwork, fonts: Fonts) {
   const width = Math.round(LABEL_SIZE.width * PX_PER_METRE);
   const height = Math.round(LABEL_SIZE.height * PX_PER_METRE);
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d")!;
+  const { canvas, ctx } = makeCanvas(width, height);
 
   ctx.fillStyle = "#efe7d4";
   ctx.fillRect(0, 0, width, height);
@@ -100,7 +61,7 @@ function drawLabel(artwork: Artwork, fonts: { serif: string; sans: string }) {
   const line = (text: string, font: string, color: string, size: number, gap = 0.35) => {
     ctx.font = `${font} ${size}px ${font.includes("italic") ? fonts.serif : fonts.sans}`;
     ctx.fillStyle = color;
-    for (const row of wrap(ctx, text, maxWidth)) {
+    for (const row of wrapText(ctx, text, maxWidth)) {
       y += size;
       ctx.fillText(row, pad, y);
       y += size * 0.22;
@@ -121,27 +82,5 @@ function drawLabel(artwork: Artwork, fonts: { serif: string; sans: string }) {
   ctx.font = `400 38px ${fonts.sans}`;
   ctx.fillStyle = muted;
   ctx.fillText(artwork.holder, pad, height - pad + 14, maxWidth);
-
-  const texture = new CanvasTexture(canvas);
-  texture.colorSpace = SRGBColorSpace;
-  texture.anisotropy = 8;
-  return texture;
-}
-
-/** Split text into lines that fit `maxWidth`. */
-function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
-  const words = text.split(" ");
-  const rows: string[] = [];
-  let current = "";
-  for (const word of words) {
-    const attempt = current ? `${current} ${word}` : word;
-    if (ctx.measureText(attempt).width > maxWidth && current) {
-      rows.push(current);
-      current = word;
-    } else {
-      current = attempt;
-    }
-  }
-  if (current) rows.push(current);
-  return rows;
+  return canvas;
 }
