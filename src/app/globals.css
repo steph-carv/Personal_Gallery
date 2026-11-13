@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+/*
+ * Salon palette (HANDOVER.md §6). These become Tailwind colours, e.g.
+ * `bg-oxblood`, `text-cream`, `border-gilt`.
+ */
+@theme {
+  --color-ink: #0e0c0a; /* near-black UI chrome */
+  --color-oxblood: #5e1d20;
+  --color-forest: #213a2c;
+  --color-navy: #1d3145;
+  --color-cream: #efe7d4; /* mouldings, wall labels */
+  --color-gilt: #d9b25c; /* gold accents */
+  --color-gilt-dim: #a8873f;
+}
+
+@theme inline {
+  --font-serif: var(--font-cormorant), "Cormorant Garamond", Georgia, serif;
+  --font-sans: var(--font-inter), Inter, system-ui, sans-serif;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-ink);
+  color: var(--color-cream);
+}
