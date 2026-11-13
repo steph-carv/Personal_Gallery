@@ -1,4 +1,4 @@
-import { BufferGeometry, Float32BufferAttribute } from "three";
+import { BufferGeometry, Float32BufferAttribute, ShapeUtils, Vector2 } from "three";
 
 /**
  * Sweep a moulding cross-section ("profile") along a 2D path.
@@ -41,12 +41,18 @@ export interface SweepOptions {
    * it to darken recesses: a cheap stand-in for ambient occlusion.
    */
   shade?: (point: ProfilePoint) => number;
+  /**
+   * Close off the two ends of an open path with a flat cap in the shape of
+   * the profile, e.g. where a dado rail stops at a doorway. The profile is
+   * treated as a closed outline (its last point joins back to its first).
+   */
+  caps?: boolean;
 }
 
 export function sweepProfile(
   path: readonly Vec2[],
   profile: readonly ProfilePoint[],
-  { closed = false, shade }: SweepOptions = {},
+  { closed = false, shade, caps = false }: SweepOptions = {},
 ): BufferGeometry {
   const pointCount = path.length;
   const edgeCount = closed ? pointCount : pointCount - 1;
@@ -163,6 +169,37 @@ export function sweepProfile(
       }
     }
     pathDistance += edgeLengths[e];
+  }
+
+  if (caps && !closed) {
+    // Triangulate the profile outline once, then place it at each end.
+    const outline = profile.map((p) => new Vector2(p.d, p.z));
+    const triangles = ShapeUtils.triangulateShape(outline, []);
+    const ends: { at: number; edge: number; facing: 1 | -1 }[] = [
+      { at: 0, edge: 0, facing: -1 },
+      { at: pointCount - 1, edge: edgeCount - 1, facing: 1 },
+    ];
+    for (const { at, edge, facing } of ends) {
+      const [px, py] = path[at];
+      const [mx, my] = mitres[at];
+      // The cap faces along the path, away from the moulding.
+      const [ax, ay] = path[edge];
+      const [bx, by] = path[edge + 1];
+      const len = edgeLengths[edge];
+      const N = [((bx - ax) / len) * facing, ((by - ay) / len) * facing, 0];
+      const corner = (k: number) => [px + mx * profile[k].d, py + my * profile[k].d, profile[k].z];
+      for (const [i0, i1, i2] of triangles) {
+        let tri = [corner(i0), corner(i1), corner(i2)];
+        if (dot(cross(sub(tri[1], tri[0]), sub(tri[2], tri[0])), N) < 0)
+          tri = [tri[0], tri[2], tri[1]];
+        for (const P of tri) {
+          positions.push(P[0], P[1], P[2]);
+          normals.push(N[0], N[1], N[2]);
+          uvs.push(P[0], P[2]);
+          colors.push(1, 1, 1);
+        }
+      }
+    }
   }
 
   const geometry = new BufferGeometry();

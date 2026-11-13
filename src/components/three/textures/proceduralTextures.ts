@@ -270,3 +270,29 @@ function tileOffsets(size: number): [number, number][] {
   for (const ox of [-size, 0, size]) for (const oy of [-size, 0, size]) out.push([ox, oy]);
   return out;
 }
+
+/* ------------------------------------------------------------------------ */
+
+let shared: {
+  plaster: Texture;
+  floor: { map: Texture; roughnessMap: Texture };
+  gilt: { roughnessMap: Texture; bumpMap: Texture };
+} | null = null;
+
+/**
+ * One set of textures for the whole gallery, made the first time it's asked
+ * for and kept for the life of the page. Every room uses the same plaster,
+ * floor and gilt, so there's no point drawing them once per room.
+ */
+export function sharedTextures() {
+  if (!shared) {
+    const plaster = createPlasterTexture();
+    // Room geometry has UVs in metres; scale so one texture tile is 2.5 m.
+    plaster.repeat.set(1 / 2.5, 1 / 2.5);
+    const floor = createOakFloorTextures();
+    for (const t of [floor.map, floor.roughnessMap])
+      t.repeat.set(1 / FLOOR_TILE_METRES, 1 / FLOOR_TILE_METRES);
+    shared = { plaster, floor, gilt: createGiltTextures() };
+  }
+  return shared;
+}
