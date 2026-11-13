@@ -1,16 +1,16 @@
 "use client";
 
 import { useTexture } from "@react-three/drei";
-import { useMemo } from "react";
-import { Object3D, SRGBColorSpace, type Texture } from "three";
+import { useFrame } from "@react-three/fiber";
+import { useMemo, useRef } from "react";
+import { Object3D, SRGBColorSpace, type SpotLight, type Texture } from "three";
+import { useGalleryStore } from "@/lib/gallery/useGalleryStore";
 import type { Placement, Room } from "@/lib/gallery/types";
 import { frameWidth as computeFrameWidth, REBATE_Z } from "../geometry/profiles";
 import { Frame } from "./Frame";
 import { paintingSize } from "./paintingSize";
-import { LABEL_SIZE, WallLabel } from "./WallLabel";
+import { LABEL_GAP, LABEL_SIZE, WallLabel } from "./WallLabel";
 
-/** Gap between the frame's outer edge and the wall label, in metres. */
-const LABEL_GAP = 0.14;
 /** Labels sit at a comfortable reading height, unless the painting hangs lower. */
 const LABEL_HEIGHT = 1.42;
 
@@ -20,11 +20,19 @@ interface PaintingProps {
   gilt: { roughnessMap: Texture; bumpMap: Texture };
 }
 
+/** Spotlight brightness, normally and when the painting is hovered or selected. */
+const LIGHT_INTENSITY = 45;
+const LIGHT_HIGHLIGHT = 70;
+
 /**
  * One hung work: canvas + frame + wall label + its own spotlight.
  *
  * Everything is positioned in the wall's local frame (see wallTransforms.ts),
  * so this component must be rendered inside the wall's <group>.
+ *
+ * The group is tagged with `userData.placementId`. That's how the camera
+ * rig's click and hover tests know a ray hit this painting (or its frame or
+ * label) rather than the wall.
  */
 export function Painting({ placement, room, gilt }: PaintingProps) {
   const { artwork, frame, x, y } = placement;
@@ -43,8 +51,12 @@ export function Painting({ placement, room, gilt }: PaintingProps) {
   const labelX = width / 2 + fw + LABEL_GAP + LABEL_SIZE.width / 2;
   const labelY = Math.min(LABEL_HEIGHT, y - height / 2 + LABEL_SIZE.height / 2);
 
+  const highlighted = useGalleryStore(
+    (s) => s.hoveredId === placement.id || s.focusedId === placement.id,
+  );
+
   return (
-    <group position={[x, y, 0]}>
+    <group position={[x, y, 0]} userData={{ placementId: placement.id }}>
       <mesh position-z={canvasZ} receiveShadow>
         <planeGeometry args={[width, height]} />
         {/* A little gloss, like varnish. */}
@@ -61,7 +73,13 @@ export function Painting({ placement, room, gilt }: PaintingProps) {
         </group>
       )}
 
-      <PictureLight width={width + fw * 2} height={height + fw * 2} room={room} paintingY={y} />
+      <PictureLight
+        width={width + fw * 2}
+        height={height + fw * 2}
+        room={room}
+        paintingY={y}
+        highlighted={highlighted}
+      />
     </group>
   );
 }
@@ -75,11 +93,13 @@ function PictureLight({
   height,
   room,
   paintingY,
+  highlighted,
 }: {
   width: number;
   height: number;
   room: Room;
   paintingY: number;
+  highlighted: boolean;
 }) {
   // Mounted near the ceiling, 1.8 m out from the wall: a typical gallery
   // track position, steep enough not to glare off the varnish.
@@ -92,15 +112,24 @@ function PictureLight({
   // world position updates. It sits at the painting's centre.
   const target = useMemo(() => new Object3D(), []);
 
+  // Ease the brightness up and down rather than switching it.
+  const light = useRef<SpotLight>(null);
+  useFrame((_, delta) => {
+    if (!light.current) return;
+    const goal = highlighted ? LIGHT_HIGHLIGHT : LIGHT_INTENSITY;
+    light.current.intensity += (goal - light.current.intensity) * (1 - Math.exp(-delta * 8));
+  });
+
   return (
     <>
       <primitive object={target} position={[0, 0, 0]} />
       <spotLight
+        ref={light}
         position={mount}
         target={target}
         angle={angle}
         penumbra={0.7}
-        intensity={45}
+        intensity={LIGHT_INTENSITY}
         decay={2}
         distance={0}
         color="#ffe6c4"

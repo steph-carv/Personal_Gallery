@@ -5,8 +5,12 @@ import { Canvas } from "@react-three/fiber";
 import { Suspense, useEffect, useMemo } from "react";
 import { NeutralToneMapping } from "three";
 import type { Room as RoomData, WallId } from "@/lib/gallery/types";
+import { usePrefersReducedMotion } from "@/lib/hooks/usePrefersReducedMotion";
 import { Painting } from "./art/Painting";
-import { EYE_HEIGHT, WalkControls } from "./controls/WalkControls";
+import { CameraRig } from "./camera/CameraRig";
+import { FloorCursor } from "./camera/FloorCursor";
+import type { FloorPlan } from "./camera/navigation";
+import { EYE_HEIGHT } from "./camera/poses";
 import { Bench, BENCH_FOOTPRINT } from "./room/Bench";
 import { Room } from "./room/Room";
 import { WALLS, wallTransform } from "./room/wallTransforms";
@@ -24,7 +28,8 @@ import { createGiltTextures } from "./textures/proceduralTextures";
  *   ├─ Bench
  *   ├─ one <group> per wall, in that wall's local frame
  *   │    └─ Painting × n (canvas, frame, label, spotlight)
- *   └─ WalkControls
+ *   ├─ FloorCursor (the ring showing where a click will walk you)
+ *   └─ CameraRig (all camera movement, clicks and hovers)
  */
 export default function GalleryScene({ room }: { room: RoomData }) {
   const byWall = useMemo(() => {
@@ -38,23 +43,32 @@ export default function GalleryScene({ room }: { room: RoomData }) {
     return groups;
   }, [room.placements]);
 
+  // Where you can stand: the room minus the bench.
+  const plan = useMemo<FloorPlan>(
+    () => ({
+      width: room.width,
+      depth: room.depth,
+      obstacles:
+        room.theme.bench === "leather"
+          ? [{ x: 0, z: 0, width: BENCH_FOOTPRINT.width, depth: BENCH_FOOTPRINT.depth }]
+          : [],
+    }),
+    [room.width, room.depth, room.theme.bench],
+  );
+  const reducedMotion = usePrefersReducedMotion();
+
   return (
-    <div id="gallery-scene" className="absolute inset-0">
+    // touch-none: drags on the canvas look around instead of scrolling or zooming the page.
+    <div className="absolute inset-0 touch-none select-none">
       <Canvas
         shadows="percentage"
         dpr={[1, 1.75]}
         camera={{ position: [0, EYE_HEIGHT, room.depth / 2 - 1.1], fov: 65, near: 0.05, far: 60 }}
-        onCreated={({ gl, camera }) => {
+        onCreated={({ gl }) => {
           // Neutral tone mapping keeps the paintings' colours true; the
           // default (ACES) shifts saturated colours.
           gl.toneMapping = NeutralToneMapping;
           gl.toneMappingExposure = 1.0;
-          camera.lookAt(0, 1.9, -room.depth / 2);
-          // Dev-only hook for moving the camera from the browser console or
-          // screenshot scripts, e.g. salonDebug.camera.position.set(0, 1.6, 2).
-          if (process.env.NODE_ENV === "development") {
-            (window as unknown as { salonDebug: object }).salonDebug = { camera };
-          }
         }}
         fallback={<p className="text-cream p-8">Your browser can&apos;t show the 3D gallery.</p>}
       >
@@ -87,15 +101,8 @@ export default function GalleryScene({ room }: { room: RoomData }) {
           <HungWorks room={room} byWall={byWall} />
         </Suspense>
 
-        <WalkControls
-          roomWidth={room.width}
-          roomDepth={room.depth}
-          obstacles={
-            room.theme.bench === "leather"
-              ? [{ x: 0, z: 0, width: BENCH_FOOTPRINT.width, depth: BENCH_FOOTPRINT.depth }]
-              : []
-          }
-        />
+        <FloorCursor />
+        <CameraRig room={room} plan={plan} reducedMotion={reducedMotion} />
       </Canvas>
     </div>
   );

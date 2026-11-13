@@ -93,8 +93,8 @@ export function Room({ room }: { room: RoomData }) {
         <meshStandardMaterial color="#1c1210" roughness={0.5} />
       </mesh>
 
-      {/* Floor */}
-      <mesh rotation-x={-Math.PI / 2} receiveShadow>
+      {/* Floor. Tagged so clicks on it mean "walk here". */}
+      <mesh rotation-x={-Math.PI / 2} receiveShadow userData={{ floor: true }}>
         <planeGeometry args={[width, depth]} />
         <meshStandardMaterial
           map={floor.map}

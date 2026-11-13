@@ -27,3 +27,13 @@ body {
   background: var(--color-ink);
   color: var(--color-cream);
 }
+
+/* Reduced-motion camera cuts: the view dips to dark and back. */
+@keyframes cut-fade {
+  from {
+    opacity: 0.7;
+  }
+  to {
+    opacity: 0;
+  }
+}
