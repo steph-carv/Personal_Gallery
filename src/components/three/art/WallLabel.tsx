@@ -6,6 +6,8 @@ import type { Artwork } from "@/lib/gallery/types";
 
 /** Card size in metres: about the size of a real museum label. */
 export const LABEL_SIZE = { width: 0.2, height: 0.14 };
+/** Gap between a frame's outer edge and its label, in metres. */
+export const LABEL_GAP = 0.14;
 const LABEL_THICKNESS = 0.004;
 const PX_PER_METRE = 5600; // ~1120 × 784 px: crisp when you walk right up to it
 
