@@ -76,6 +76,8 @@ export interface RoomTheme {
 
 export interface Room {
   id: string;
+  /** Used in the room's URL: /g/[username]/[slug]. */
+  slug: string;
   number: number;
   name: string;
   intro: string;
@@ -85,4 +87,11 @@ export interface Room {
   height: number;
   theme: RoomTheme;
   placements: Placement[];
+}
+
+/** A user's museum: their rooms, in order (HANDOVER.md §4, `profiles` + `rooms`). */
+export interface Collection {
+  username: string;
+  collectionName: string;
+  rooms: Room[];
 }
