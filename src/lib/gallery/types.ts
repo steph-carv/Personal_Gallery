@@ -32,6 +32,13 @@ export interface Artwork {
   attribution: string;
   /** Page for the work at its source. */
   sourceUrl: string;
+  /**
+   * "About the work" text. Museum-written descriptions are often copyrighted
+   * even when the image isn't (§5d), so this is either licensed text from the
+   * source or our own short summary; `descriptionCredit` says which.
+   */
+  description?: string;
+  descriptionCredit?: string;
 }
 
 export type FrameStyle =
@@ -52,6 +59,8 @@ export interface Placement {
   y: number;
   frame: FrameSettings;
   showLabel: boolean;
+  /** The owner's "Why it's in my collection" note. */
+  personalNote?: string;
 }
 
 /** Per-room look (§7). Only the options Phase 2 uses so far. */

@@ -26,6 +26,9 @@ const madameX: Artwork = {
   imageHeight: 1600,
   attribution: "Image: The Metropolitan Museum of Art, CC0",
   sourceUrl: "https://www.metmuseum.org/art/collection/search/12127",
+  description:
+    "Sargent painted Virginie Amélie Avegno Gautreau, an American-born Parisian society beauty, in a black satin gown that sets off her powdered skin. Shown at the Paris Salon of 1884, it caused a scandal, partly because one jewelled strap had slipped from her shoulder; Sargent later repainted it in place. He kept the picture for over thirty years before selling it to the Met in 1916.",
+  descriptionCredit: "Written for Salon",
 };
 
 const monaLisa: Artwork = {
@@ -46,6 +49,9 @@ const monaLisa: Artwork = {
   imageHeight: 1600,
   attribution: "Image: Wikimedia Commons (C2RMF), public domain",
   sourceUrl: "https://www.wikidata.org/wiki/Q12418",
+  description:
+    "Probably a portrait of Lisa Gherardini, wife of the Florentine merchant Francesco del Giocondo. Leonardo worked on it for years and never handed it over, taking it with him to France. Soft transitions of light and shade (sfumato) give the face and the hazy landscape behind it their famous ambiguity. Its theft from the Louvre in 1911 helped make it the most famous painting in the world.",
+  descriptionCredit: "Written for Salon",
 };
 
 const girlWithAPearlEarring: Artwork = {
@@ -66,6 +72,9 @@ const girlWithAPearlEarring: Artwork = {
   imageHeight: 1600,
   attribution: "Image: Wikimedia Commons, public domain",
   sourceUrl: "https://www.wikidata.org/wiki/Q185372",
+  description:
+    "Not a commissioned portrait but a tronie: a Dutch study of a face, here a girl in an exotic turban turning to look over her shoulder. Nobody knows who modelled for it. Against a dark background, Vermeer builds her face out of soft light, with a single bright highlight on the large pearl.",
+  descriptionCredit: "Written for Salon",
 };
 
 const laughingCavalier: Artwork = {
@@ -86,6 +95,9 @@ const laughingCavalier: Artwork = {
   imageHeight: 1600,
   attribution: "Image: Wikimedia Commons, public domain",
   sourceUrl: "https://www.wikidata.org/wiki/Q965124",
+  description:
+    "The title is a 19th-century invention: the sitter, 26 years old according to the inscription, is smiling rather than laughing. Hals shows off his quick, confident brushwork in the lace collar and the embroidered sleeve. The painting caused a bidding war in Paris in 1865 when it was bought by the 4th Marquess of Hertford, whose collection became the Wallace Collection.",
+  descriptionCredit: "Written for Salon",
 };
 
 const strawHat: Artwork = {
@@ -106,6 +118,9 @@ const strawHat: Artwork = {
   imageHeight: 1600,
   attribution: "Image: The Metropolitan Museum of Art, CC0",
   sourceUrl: "https://www.metmuseum.org/art/collection/search/436532",
+  description:
+    "Painted in Paris, where Van Gogh made dozens of self-portraits because he couldn't afford to pay models. The short, separate strokes of colour show what he was learning from the Impressionists and Neo-Impressionists. To save money he painted it on the back of an earlier canvas, The Potato Peeler, from his dark Dutch period.",
+  descriptionCredit: "Written for Salon",
 };
 
 const gilt = { style: "ornate-gilt", width: "standard" } as const;

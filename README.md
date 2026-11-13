@@ -3,7 +3,7 @@
 A museum you curate yourself: a 3D gallery you walk through, hang open-access paintings in,
 and style room by room. The full brief is in [`HANDOVER.md`](./HANDOVER.md).
 
-**Status:** Phase 2 (one hard-coded 3D room) of the build order in HANDOVER §10.
+**Status:** Phase 3 (navigation and painting detail) of the build order in HANDOVER §10.
 
 ## Stack
 
@@ -28,11 +28,24 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open http://localhost:3000, click **Walk in**, then walk with WASD / arrow keys and look with the
-mouse (Shift walks faster, Esc lets go of the mouse).
+Open http://localhost:3000.
 
-In development, the browser console has `salonDebug.camera` for moving the camera by hand, e.g.
-`salonDebug.camera.position.set(0, 1.6, 0)`.
+### Getting around
+
+| Do this                   | Desktop                                  | Phone            |
+| ------------------------- | ---------------------------------------- | ---------------- |
+| Look around               | Drag, or **Mouse look** for first-person | Drag             |
+| Walk                      | WASD / arrow keys (Shift = faster)       | Tap the floor    |
+| Walk to a spot            | Click the floor                          | Tap the floor    |
+| Next / previous painting  | E / Q, or the tour bar                   | The tour bar     |
+| Step closer (detail view) | Click a painting, or Enter on the tour   | Tap a painting   |
+| Back to the room          | Esc, Back to the room, or browser Back   | Back to the room |
+
+Every painting has its own link, `/work/[placementId]` (e.g. `/work/p1`), which opens straight
+into its detail view.
+
+In development, the browser console has `salonDebug.view([x, y, z], [lookX, lookY, lookZ])` to
+stand somewhere and look at a point, and `salonDebug.store` for the shared UI state.
 
 ## Scripts
 
@@ -62,17 +75,19 @@ See [`.env.example`](./.env.example). All are validated at start-up in `src/lib/
 ```
 src/
   app/                       routes (App Router): layout, pages, global styles
+    (gallery)/               the gallery layout (stays mounted) + / and /work/[placementId]
   components/
-    gallery/                 2D interface around the 3D scene (top bar, "Walk in" card)
+    gallery/                 2D interface: tour bar, welcome card, detail overlay, zoom viewer
     three/
       GalleryScene.tsx       the Canvas: renderer, lights, environment, what goes where
       room/                  architecture: walls + trims, floor, ceiling/skylight, bench
       art/                   a hung painting: canvas, frame, wall label, spotlight
       geometry/              sweepProfile (frames and mouldings) and the profiles
       textures/              floor, plaster, gilt and leather textures drawn in code
-      controls/              first-person walking and collisions
+      camera/                the camera rig (all movement), viewing poses, path planning
   lib/
-    gallery/                 data types, the hard-coded Room 1, shared UI state (Zustand)
+    gallery/                 data types, the hard-coded Room 1, tour order, shared state (Zustand)
+    hooks/                   media-query and reduced-motion hooks
     config.ts                APP_MODE (personal / public)
     env.ts                   validated environment variables
     supabase/                browser and server Supabase clients
@@ -87,6 +102,9 @@ public/art/starter/          starter collection images (sources in CREDITS.md)
   face it, y up, z out into the room. Paintings are placed in these wall coordinates, which is
   also how they're stored (`placements.wall`, `x`, `y`).
 - Paintings hang at their real size when it's known (`art/paintingSize.ts`).
+- The camera is only ever moved by `camera/CameraRig.tsx`. Its pose is position + yaw + pitch
+  (yaw 0 looks north; positive turns left). Everything else asks it to move through the store's
+  `camera` commands or by changing `detailId`.
 
 ## Deploying to Vercel
 
