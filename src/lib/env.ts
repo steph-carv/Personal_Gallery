@@ -17,16 +17,38 @@ const publicEnvSchema = z.object({
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(1).optional(),
 });
 
-const parsed = publicEnvSchema.safeParse({
-  NEXT_PUBLIC_APP_MODE: process.env.NEXT_PUBLIC_APP_MODE || undefined,
-  NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || undefined,
-  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || undefined,
-});
+/**
+ * Tidy a raw value from a dashboard or .env file: trim spaces and newlines and
+ * strip one pair of surrounding quotes, so `"personal" ` still counts. Empty
+ * values become undefined, so the schema's default or `.optional()` applies.
+ */
+function clean(value: string | undefined): string | undefined {
+  const trimmed = value
+    ?.trim()
+    .replace(/^(["'])(.*)\1$/, "$2")
+    .trim();
+  return trimmed ? trimmed : undefined;
+}
+
+const raw = {
+  NEXT_PUBLIC_APP_MODE: clean(process.env.NEXT_PUBLIC_APP_MODE)?.toLowerCase(),
+  NEXT_PUBLIC_SUPABASE_URL: clean(process.env.NEXT_PUBLIC_SUPABASE_URL),
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: clean(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY),
+};
+
+const parsed = publicEnvSchema.safeParse(raw);
 
 if (!parsed.success) {
+  // Only the non-secret values are echoed back, to make typos easy to spot.
+  // (The publishable key is never printed.)
+  const received = {
+    NEXT_PUBLIC_APP_MODE: raw.NEXT_PUBLIC_APP_MODE,
+    NEXT_PUBLIC_SUPABASE_URL: raw.NEXT_PUBLIC_SUPABASE_URL,
+  };
   throw new Error(
-    `Invalid environment variables. Check .env.local against .env.example.\n${z.prettifyError(parsed.error)}`,
+    `Invalid environment variables. Check .env.local (or your Vercel project's Environment Variables) against .env.example.\n` +
+      `${z.prettifyError(parsed.error)}\n` +
+      `Received: ${JSON.stringify(received)}`,
   );
 }
 
