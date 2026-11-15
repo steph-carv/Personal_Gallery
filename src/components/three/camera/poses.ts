@@ -2,7 +2,7 @@ import { MathUtils, Vector3 } from "three";
 import type { PlacedRoom } from "@/lib/gallery/layout";
 import type { Placement } from "@/lib/gallery/types";
 import { framedSize, wallToWorld } from "../art/placementGeometry";
-import { LABEL_GAP, LABEL_SIZE } from "../art/WallLabel";
+import { LABEL_GAP, LABEL_SIZE } from "../art/labelSize";
 import { wallTransform } from "../room/wallTransforms";
 import { BODY_RADIUS, clampToWalkable, type FloorPlan } from "./navigation";
 
