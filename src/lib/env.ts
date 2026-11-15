@@ -30,9 +30,23 @@ function clean(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+/**
+ * Supabase's address is just `https://<project>.supabase.co`; the client adds
+ * the paths for each service. Dashboards also show longer addresses (like
+ * `…/rest/v1/`), so keep only the origin if one of those is pasted in.
+ */
+function supabaseOrigin(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    return new URL(value).origin;
+  } catch {
+    return value; // Not a URL at all: let the schema report it.
+  }
+}
+
 const raw = {
   NEXT_PUBLIC_APP_MODE: clean(process.env.NEXT_PUBLIC_APP_MODE)?.toLowerCase(),
-  NEXT_PUBLIC_SUPABASE_URL: clean(process.env.NEXT_PUBLIC_SUPABASE_URL),
+  NEXT_PUBLIC_SUPABASE_URL: supabaseOrigin(clean(process.env.NEXT_PUBLIC_SUPABASE_URL)),
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: clean(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY),
 };
 
