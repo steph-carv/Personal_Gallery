@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { imageSrc } from "@/lib/gallery/imageSrc";
 
 const MIN_SCALE = 1;
 const MAX_SCALE = 6;
@@ -127,7 +128,7 @@ export function LookCloser({ src, alt, width, height, onClose }: LookCloserProps
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- full-resolution image, transformed by hand */}
         <img
-          src={src}
+          src={imageSrc(src, 3840)}
           alt={alt}
           width={width}
           height={height}

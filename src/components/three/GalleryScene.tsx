@@ -4,6 +4,7 @@ import { Environment, Lightformer, useTexture } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { Component, Suspense, useEffect, useMemo, type ReactNode } from "react";
 import { NeutralToneMapping, Object3D } from "three";
+import { imageSrc } from "@/lib/gallery/imageSrc";
 import type { PlacedRoom } from "@/lib/gallery/layout";
 import type { Placement, WallId } from "@/lib/gallery/types";
 import { useGalleryStore } from "@/lib/gallery/useGalleryStore";
@@ -68,7 +69,7 @@ export default function GalleryScene({ rooms }: { rooms: PlacedRoom[] }) {
   useEffect(() => {
     for (const room of rooms) {
       if (Math.abs(room.index - current.index) === 2) {
-        for (const p of room.placements) useTexture.preload(p.artwork.imageUrl);
+        for (const p of room.placements) useTexture.preload(imageSrc(p.artwork.imageUrl));
       }
     }
   }, [rooms, current.index]);

@@ -4,6 +4,7 @@ import { useTexture } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
 import { SRGBColorSpace, type MeshStandardMaterial, type Texture } from "three";
+import { imageSrc } from "@/lib/gallery/imageSrc";
 import type { Placement } from "@/lib/gallery/types";
 import { REBATE_Z } from "../geometry/profiles";
 import { sharedTextures } from "../textures/proceduralTextures";
@@ -34,7 +35,7 @@ export function Painting({ placement, lit }: { placement: Placement; lit: boolea
   const { painting, frameWidth: fw } = framedSize(placement);
   const { width, height } = painting;
 
-  const image = useTexture(artwork.imageUrl, (t) => {
+  const image = useTexture(imageSrc(artwork.imageUrl), (t) => {
     const texture = t as Texture;
     texture.colorSpace = SRGBColorSpace;
     texture.anisotropy = 8;
