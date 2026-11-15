@@ -111,6 +111,14 @@ export function GalleryExperience({
               {roomLabel(room)}
             </span>
           )}
+          {viewer?.isOwner && (
+            <Link
+              href={`/add?room=${room.id}`}
+              className="bg-gilt text-ink focus-visible:outline-cream pointer-events-auto inline-flex min-h-11 items-center rounded-full px-4 text-xs font-semibold transition hover:bg-[#e6c47a] focus-visible:outline-2"
+            >
+              Add a work
+            </Link>
+          )}
           {viewer?.isOwner && collection.visibility === "private" && (
             <span
               title="Only you can see this gallery."
