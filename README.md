@@ -3,7 +3,7 @@
 A museum you curate yourself: a 3D gallery you walk through, hang open-access paintings in,
 and style room by room. The full brief is in [`HANDOVER.md`](./HANDOVER.md).
 
-**Status:** Phase 5 (accounts and the database) of the build order in HANDOVER §10.
+**Status:** Phase 6 (catalogue search and hanging works) of the build order in HANDOVER §10.
 
 ## Stack
 
@@ -75,14 +75,19 @@ stand somewhere and look at a point, `salonDebug.store` for the shared UI state 
 
 See [`.env.example`](./.env.example). All are validated at start-up in `src/lib/env.ts`.
 
-| Variable                               | Needed from | Notes                                     |
-| -------------------------------------- | ----------- | ----------------------------------------- |
-| `NEXT_PUBLIC_APP_MODE`                 | now         | `personal` (default) or `public`, see §0b |
-| `NEXT_PUBLIC_SUPABASE_URL`             | sign-in     | Supabase → Project Settings → Data API    |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | sign-in     | Supabase → Project Settings → API Keys    |
+| Variable                               | Needed from       | Notes                                                                               |
+| -------------------------------------- | ----------------- | ----------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_APP_MODE`                 | now               | `personal` (default) or `public`, see §0b                                           |
+| `NEXT_PUBLIC_SUPABASE_URL`             | sign-in           | `https://<project id>.supabase.co` (see below)                                      |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | sign-in           | Supabase → Project Settings → API Keys                                              |
+| `SUPABASE_SECRET_KEY`                  | hanging new works | Supabase → Project Settings → API Keys → Secret keys. **Keep secret.**              |
+| `SALON_CONTACT_EMAIL`                  | museum search     | Sent to Wikimedia and the Art Institute so they can get in touch about our requests |
 
-Both Supabase values are safe in the browser: what anyone can read or change is decided by
-row-level security in the database, not by keeping the key secret.
+The two `NEXT_PUBLIC_` Supabase values are safe in the browser: what anyone can read or change is
+decided by row-level security in the database, not by keeping the key secret. The other two are
+server-only. The secret key skips row-level security, so it's used for one thing only: adding a
+work to the shared catalogue after the server has checked it at the museum. Never put it in a
+`NEXT_PUBLIC_` variable, and mark it **Sensitive** in Vercel.
 
 ## Project layout
 
@@ -92,6 +97,8 @@ src/
   app/                       routes (App Router): layout, pages, global styles
     g/[username]/            the gallery layout (stays mounted) + room and painting pages
     login/, welcome/, auth/  sign in, first-time welcome, sign-in callback and actions
+    add/                     Add a work: search, saved, storeroom, hang (owners only)
+    api/catalogue/search/    GET search across the museum sources
   components/
     gallery/                 2D interface: tour bar, detail overlay, zoom viewer, 2D view, URL sync
     three/
@@ -103,7 +110,9 @@ src/
       camera/                the camera rig (all movement), viewing poses, floor plan + routing
   lib/
     auth.ts                  getViewer(): who's signed in
+    catalogue/               museum search: Met, Art Institute of Chicago, Wikidata + Commons
     data/collections.ts      load a gallery from the database (or the built-in demo)
+    data/hanging.ts          add a work to the catalogue and find it a place on the wall
     gallery/                 data types, Zod schemas, starter collection, layout, tour, shared state
     hooks/                   media-query and reduced-motion hooks
     config.ts                APP_MODE (personal / public)
@@ -131,6 +140,24 @@ scripts/                     starter seed generator, database test runner
 - The camera is only ever moved by `camera/CameraRig.tsx`. Its pose is position + yaw + pitch
   (yaw 0 looks north; positive turns left). Everything else asks it to move through the store's
   `camera` commands or by changing `detailId`.
+
+## Adding works
+
+Owners get an **Add a work** button in their gallery. It opens `/add`:
+
+- **Find a work** searches the Met, the Art Institute of Chicago and Wikidata (with images from
+  Wikimedia Commons) at once. Only public-domain or openly licensed works with an image appear:
+  the Met's and AIC's public-domain flags, and for Wikidata an artist who died more than 70 years
+  ago plus an open licence on the image file. Results are cached for a day.
+- **Saved** lists works you've saved from other galleries (saving arrives in Phase 11).
+- **Storeroom** holds works that aren't on a wall: from deleted rooms, or rooms that were full.
+
+Pick a work, choose **Hang in [room]**, and press **Hang**. The server looks the work up again at
+the museum before saving anything, then puts it in the middle of the widest free stretch of wall
+(`lib/gallery/hanging.ts`). Curate mode (Phase 8) adds moving works around.
+
+Museum images are served through Next's image optimiser (`/_next/image`), which fetches each image
+once and caches it, so visitors never load images straight from the museums.
 
 ## The database
 
@@ -164,11 +191,20 @@ Everything lives in two migrations in `supabase/migrations/`:
      `https://personal-gallery-urs4.vercel.app/auth/callback`, and one wildcard for preview
      deployments in the form Vercel uses for your previews, e.g.
      `https://personal-gallery-*.vercel.app/auth/callback`.
-5. Copy the keys: **Project Settings → Data API → Project URL** and **Project Settings → API Keys →
-   Publishable key**. Put them in `.env.local` as `NEXT_PUBLIC_SUPABASE_URL` and
-   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
-6. In Vercel, **Settings → Environment Variables**, add the same two variables (for Production and
-   Preview), then redeploy.
+5. Collect the values:
+   - **Project URL**: `https://<project id>.supabase.co`, where the project ID is in **Project
+     Settings → General** (or in the dashboard's address bar, after `/project/`). If you copy an
+     address from the dashboard that has more on the end (like `/rest/v1/`), that's fine: the app
+     keeps only the `https://….supabase.co` part.
+   - **Publishable key**: **Project Settings → API Keys**, starts `sb_publishable_`.
+   - **Secret key**: same page, under secret keys, starts `sb_secret_`. Needed to hang works that
+     nobody has hung before.
+   - **Contact email** for museum APIs (`SALON_CONTACT_EMAIL`).
+
+   Put them in `.env.local` (see the table above).
+
+6. In Vercel, **Settings → Environment Variables**, add the same four variables (for Production and
+   Preview; mark the secret key **Sensitive**), then redeploy.
 7. Sign in at `/login` with your allowlisted email. Open the link **in the same browser** you
    requested it from (the link is tied to that browser for security). The welcome page asks for
    your gallery's address and name, then opens your private gallery.
